@@ -1,7 +1,7 @@
 pipeline {
     agent any
 
-    environment {
+    env {
         PATH = "/usr/bin:$PATH"
         tag = "1.0"
         dockerHubUser = "leauolsa"
@@ -23,25 +23,25 @@ pipeline {
         }
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t ${environment.dockerHubUser}/insure-me:${environment.tag} ."
+                sh "docker build -t ${env.dockerHubUser}/insure-me:${env.tag} ."
             }
         }
         stage('Push Image to DockerHub') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dockerHubAccount', passwordVariable: 'dockerPassword', usernameVariable: 'dockerUser')]) {
                     sh "docker login -u $dockerUser -p $dockerPassword"
-                    sh "docker push ${environment.dockerHubUser}/${environment.containerName}:${environment.tag}"
+                    sh "docker push ${env.dockerHubUser}/${env.containerName}:${env.tag}"
                 }
             }
         }
         stage('Docker Container Deployment') {
             steps {
-                sh "docker rm -f ${environment.containerName}"
-                sh "docker pull ${environment.dockerHubUser}/${environment.containerName}:${environment.tag}"
+                sh "docker rm -f ${env.containerName}"
+                sh "docker pull ${env.dockerHubUser}/${env.containerName}:${env.tag}"
                 sh """
-                    docker run -d --rm -p ${environment.httpPort}:${environment.httpPort} --name ${environment.containerName} ${environment.dockerHubUser}/${environment.containerName}:${environment.tag}
+                    docker run -d --rm -p ${env.httpPort}:${env.httpPort} --name ${env.containerName} ${env.dockerHubUser}/${env.containerName}:${env.tag}
                    """
-                echo "Application started on port: ${environment.httpPort} (http)"
+                echo "Application started on port: ${env.httpPort} (http)"
             }
         }
     }
