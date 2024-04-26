@@ -1,64 +1,48 @@
-node{
-    
-    def mavenHome, mavenCMD, docker, tag, dockerHubUser, containerName, httpPort = ""
-    
-    stage('Prepare Environment'){
-        echo 'Initialize Environment'
-        mavenHome = tool name: 'maven' , type: 'maven'
-        mavenCMD = "${mavenHome}/bin/mvn"
-        tag="3.0"
-	dockerHubUser="anujsharma1990"
-	containerName="insure-me"
-	httpPort="8081"
+pipeline {
+    agent any
+
+    environment {
+        PATH = "/usr/bin:$PATH"
+        tag = "1.0"
+        dockerHubUser = "leauolsa"
+        containerName = "insure-me"
+        httpPort = "8081"
     }
-    
-    stage('Code Checkout'){
-        try{
-            checkout scm
+
+    stages {
+        stage('Code Clone') {
+            steps {
+                // Assuming git plugin is configured in Jenkins
+                git branch: 'main', url: 'https://github.com/Leauolsa/asi-insurance.git'
+            }
         }
-        catch(Exception e){
-            echo 'Exception occured in Git Code Checkout Stage'
-            currentBuild.result = "FAILURE"
-            //emailext body: '''Dear All,
-            //The Jenkins job ${JOB_NAME} has been failed. Request you to please have a look at it immediately by clicking on the below link. 
-            //${BUILD_URL}''', subject: 'Job ${JOB_NAME} ${BUILD_NUMBER} is failed', to: 'jenkins@gmail.com'
+        stage('Maven Build') {
+            steps {
+                sh 'mvn clean install -DskipTests'
+            }
+        }
+        stage('Build Docker Image') {
+            steps {
+                sh "docker build -t ${environment.dockerHubUser}/insure-me:${environment.tag} ."
+            }
+        }
+        stage('Push Image to DockerHub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerHubAccount', passwordVariable: 'dockerPassword', usernameVariable: 'dockerUser')]) {
+                    sh "docker login -u $dockerUser -p $dockerPassword"
+                    sh "docker push ${environment.dockerHubUser}/${environment.containerName}:${environment.tag}"
+                }
+            }
+        }
+        stage('Docker Container Deployment') {
+            steps {
+                sh "docker rm -f ${environment.containerName}"
+                sh "docker pull ${environment.dockerHubUser}/${environment.containerName}:${environment.tag}"
+                sh """
+                    docker run -d --rm -p ${environment.httpPort}:${environment.httpPort} --name ${environment.containerName} ${environment.dockerHubUser}/${environment.containerName}:${environment.tag}
+                   """
+                echo "Application started on port: ${environment.httpPort} (http)"
+            }
         }
     }
-    
-    stage('Maven Build'){
-        sh "${mavenCMD} clean package"        
-    }
-    
-    stage('Publish Test Reports'){
-        publishHTML([allowMissing: false, alwaysLinkToLastBuild: false, keepAll: false, reportDir: 'target/surefire-reports', reportFiles: 'index.html', reportName: 'HTML Report', reportTitles: '', useWrapperFileDirectly: true])
-    }
-    
-    stage('Docker Image Build'){
-        echo 'Creating Docker image'
-        sh "docker build -t $dockerHubUser/$containerName:$tag --pull --no-cache ."
-    }
-	
-    stage('Docker Image Scan'){
-        echo 'Scanning Docker image for vulnerbilities'
-        sh "docker build -t ${dockerHubUser}/insure-me:${tag} ."
-    }   
-	
-    stage('Publishing Image to DockerHub'){
-        echo 'Pushing the docker image to DockerHub'
-        withCredentials([usernamePassword(credentialsId: 'dockerHubAccount', usernameVariable: 'dockerUser', passwordVariable: 'dockerPassword')]) {
-			sh "docker login -u $dockerUser -p $dockerPassword"
-			sh "docker push $dockerUser/$containerName:$tag"
-			echo "Image push complete"
-        } 
-    }    
-	
-	stage('Docker Container Deployment'){
-		sh "docker rm $containerName -f"
-		sh "docker pull $dockerHubUser/$containerName:$tag"
-		sh "docker run -d --rm -p $httpPort:$httpPort --name $containerName $dockerHubUser/$containerName:$tag"
-		echo "Application started on port: ${httpPort} (http)"
-	}
 }
-
-
-
